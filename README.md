@@ -1,53 +1,42 @@
-# variable
+# Varlet
 
-v
+Varlet lets you prompt for variables at runtime, and saves them to a variables.yaml file.
 
-## Installation
+## Install
 
-1. pip install django-cloak
-1. Add `cloak` to your INSTALLED_APPS setting
-1. Add `cloak.middleware.CloakMiddleware` to your `MIDDLEWARE_CLASSES` (after session and auth middleware)
-1. Add `url(r'^cloak/', include('cloak.urls'))` to your urls.py
+    pip install varlet
 
-## Requirements
+## Usage
 
-SessionMiddleware and django.contrib.auth
+In your settings.py file add:
 
-## Usages
+```python
+from varlet import variable
+```
 
-### Command line
+whenever you declare a variable that could change depending on the environment,
+use:
 
-    ./manage.py login user_identifier
+```python
+# It is OK to make this True if you are in dev
+DEBUG = variable("DEBUG", default=False)
+```
 
-where `user_identifier` is the value of the USERNAME_FIELD field of your user model.
+If this "DEBUG" variable is not defined in variables.yaml, the user is prompted
+to enter a Python expression to set it. Otherwise, it is read from
+variables.yaml.
 
-This will spit out a path you can append to your site's base URL, which will automatically log you in as that user.
+When the prompt is displayed, the comments directly above the call to
+`variable()` are displayed, and the prompt has a default value as specified by
+the `default` argument.
 
-**Note**: The backend associated with the user (i.e. the value of `user.backend`) will be the first backend listed in AUTHENTICATION_BACKENDS.
 
-### Templates
+## Implementation Details
 
-To cloak as a user, create a form that POSTs to the cloaking URL. The URL can either contain the PK of the user, or you can pass the PK as a POST parameter:
+The first module to make a call to `variable()` determines the location of the
+variables.yaml file. Varlet will look in the directory that the calling module is
+located in. If variables.yaml does not exist in that directory, it is created
+there.
 
-    <form method="post" action="{% url 'cloak' user.pk %}">
-        {% csrf_token %}
-        <input type="submit" name="submit" value="Cloak" />
-    </form>
-
-or
-
-    <form method="post" action="{% url 'cloak' %}">
-        {% csrf_token %}
-        <select name="pk">
-            <option value="1">Matt</option>
-            <option value="2">Thom</option>
-            <option value="3">Brandon</option>
-        </select>
-        <input type="submit" name="submit" value="Cloak" />
-    </form>
-
-## Other Information
-
-You can tell if a user is cloaked by checking the "is_cloaked" attribute on the user object (this flag is set in the middleware).
-
-When determining if a user is allowed to cloak, the cloak view tries to call a `request.user.can_cloak_as(other_user)` method. If no such method is defined, the code falls back on the `request.user.is_admin` flag.
+If STDIN is not a tty-like interface, then a KeyError is raise if the varable
+is not set in variables.yaml.
