@@ -30,6 +30,13 @@ import token
 import readline
 from functools import partial
 from collections import defaultdict
+# Python3 removed raw_input and change input() so it had the same semantics as
+# raw_input
+try:
+    input = raw_input
+except NameError:
+    pass
+
 
 class AnsiFormatCode:
     BLACK = 90
@@ -64,21 +71,40 @@ A_UNIQUE_VALUE = float("nan")
 # the first module to import this module determines the location of the config
 # file. We can determine the location of the caller by inspecting the stack
 VARIABLES_FILENAME = "variables.yaml"
-# the importer of this module is the previous thing on the stack
-frame = inspect.stack()[1]
-filename = frame[1]
-variables_path = os.path.join(os.path.dirname(filename), VARIABLES_FILENAME)
-# try to load the variables yaml file
-try:
-    with open(variables_path, "r") as f:
-        variables = yaml.safe_load(f) or {}
-except IOError:
-    # the file doesn't exist yet, so we fake the variables
-    variables = {}
+
+# a dictionary of configuration options
+variables = None
+# the path to the configuration yaml file
+variables_path = ""
+
+
+def bootstrap():
+    """
+    Initialize the variables dictionary by loading the yaml file which is
+    assumed to be located in the same directory as the 3rd thing on the stack
+    frame
+    """
+    global variables, variables_path
+    # The zero-th thing on the stack is this function, the one-th is the
+    # variable() function, the two-th is the first module to call the variable
+    # function, which is where the config yaml file is assumed to be
+    frame = inspect.stack()[2]
+    filename = frame[1]
+    variables_path = os.path.join(os.path.dirname(filename), VARIABLES_FILENAME)
+    # try to load the variables yaml file
+    try:
+        with open(variables_path, "r") as f:
+            variables = yaml.safe_load(f) or {}
+    except IOError:
+        # the file doesn't exist yet, so we fake the variables
+        variables = {}
 
 
 def variable(name, default=A_UNIQUE_VALUE):
     global variables
+    if variables is None:
+        bootstrap()
+
     # if the name of the variable is not defined, we need to prompt the user for it
     if name not in variables:
         has_default = default is not A_UNIQUE_VALUE
@@ -95,7 +121,7 @@ def variable(name, default=A_UNIQUE_VALUE):
             if not os.isatty(sys.stdin.fileno()):
                 raise KeyError("You need to set the variable '%s' in '%s'. You can set this interactively if you run this script with stdin as a tty-like device" % (name, variables_path))
 
-            val = raw_input(warning(name) + " = ")
+            val = input(warning(name) + " = ")
             # clear the startup hook since we only want to show the default
             # value once
             readline.set_startup_hook()
