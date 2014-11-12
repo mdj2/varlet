@@ -8,35 +8,34 @@ something like:
 
 Here is a more useful example:
 
-    from base64 import b64encode
     import os
 
     # This needs to be a cryptographically secure random string. The default is
     # fine.
-    SECRET_KEY = variable("SECRET_KEY", default=b64encode(os.urandom(64)).decode("utf-8"))
+    SECRET_KEY = variable("SECRET_KET", os.urandom(64).decode("latin1"))
 
 When your settings file is interpreted, a call to variable will look in a
-variables.yaml file (in the same directory as the settings file) to find the value
+variables module (which must be in your python path somewhere) to find the value
 of the setting. If it is not defined, you are prompted to enter a valid Python
-expression to set it, which is then written to the variables.yaml file.
+expression to set it, which is then written to the variables.py file in the
+location of __main__
 """
 from __future__ import print_function
 import os
 import sys
 import inspect
-import yaml
 import tokenize
 import token
 import readline
+import importlib
 from functools import partial
 from collections import defaultdict
-# Python3 removed raw_input and change input() so it had the same semantics as
-# raw_input
+# these are imported so I can use mock easily to patch them. Also note that I
+# alias raw_input to input for Python2
 try:
-    input = raw_input
-except NameError:
-    pass
-
+    from builtins import input, print
+except ImportError:
+    from __builtin__ import raw_input as input, print
 
 class AnsiFormatCode:
     BLACK = 90
@@ -68,42 +67,29 @@ danger = partial(ansi_format, AnsiFormatCode.RED)
 # object using the identity operator
 A_UNIQUE_VALUE = float("nan")
 
-# the first module to import this module determines the location of the config
-# file. We can determine the location of the caller by inspecting the stack
-VARIABLES_FILENAME = "variables.yaml"
+# the name of the module in the python path that we should load variables from
+VARIABLES_MODULE = "variables"
 
 # a dictionary of configuration options
-variables = None
-# the path to the configuration yaml file
-variables_path = ""
+variables = {}
+try:
+    variables_module = importlib.import_module(VARIABLES_MODULE)
+    # the path to the VARIABLES_MODULE
+    VARIABLES_PATH = os.path.abspath(os.path.join(variables_module.__file__))
+    variables = dict((k, v) for k, v in variables_module.__dict__.items() if not k.startswith("__"))
+except ImportError as e:
+    # the variables module doesn't exist in the PYTHONPATH, so we will create
+    # it in the same location as __main__
+    VARIABLES_PATH = os.path.abspath(os.path.join(os.path.dirname(getattr(sys.modules["__main__"], '__file__', '')), VARIABLES_MODULE + ".py"))
+    # the default location isn't in sys.path, so error out
+    if os.path.dirname(VARIABLES_PATH) not in sys.path:
+        raise RuntimeError("You need to create a %s.py file somewhere in your PYTHONPATH!" % (VARIABLES_MODULE))
 
-
-def bootstrap():
-    """
-    Initialize the variables dictionary by loading the yaml file which is
-    assumed to be located in the same directory as the 3rd thing on the stack
-    frame
-    """
-    global variables, variables_path
-    # The zero-th thing on the stack is this function, the one-th is the
-    # variable() function, the two-th is the first module to call the variable
-    # function, which is where the config yaml file is assumed to be
-    frame = inspect.stack()[2]
-    filename = frame[1]
-    variables_path = os.path.join(os.path.dirname(filename), VARIABLES_FILENAME)
-    # try to load the variables yaml file
-    try:
-        with open(variables_path, "r") as f:
-            variables = yaml.safe_load(f) or {}
-    except IOError:
-        # the file doesn't exist yet, so we fake the variables
-        variables = {}
+    print(success("A %s.py file will be created in %s after you set a variable" % (VARIABLES_MODULE, VARIABLES_PATH)))
 
 
 def variable(name, default=A_UNIQUE_VALUE):
     global variables
-    if variables is None:
-        bootstrap()
 
     # if the name of the variable is not defined, we need to prompt the user for it
     if name not in variables:
@@ -114,12 +100,13 @@ def variable(name, default=A_UNIQUE_VALUE):
             print(info(comment))
 
         if has_default:
+            # write the default to stdin when input is promoted for
             readline.set_startup_hook(lambda: readline.insert_text(repr(default)))
 
         while name not in variables:
             # make sure we are at a tty device
             if not os.isatty(sys.stdin.fileno()):
-                raise KeyError("You need to set the variable '%s' in '%s'. You can set this interactively if you run this script with stdin as a tty-like device" % (name, variables_path))
+                raise KeyError("You need to set the variable '%s' in %s (or somewhere else in your python path)." % (name, VARIABLES_PATH))
 
             val = input(warning(name) + " = ")
             # clear the startup hook since we only want to show the default
@@ -131,21 +118,29 @@ def variable(name, default=A_UNIQUE_VALUE):
             else:
                 try:
                     val = eval(val)
-                    # make sure it is YAML serializable. This will throw an
-                    # exception if it fails
-                    yaml.safe_dump(val)
-                    # everything is good, so we can actually save the value
-                    variables[name] = val
-                except yaml.representer.RepresenterError as e:
-                    print(danger("The value must be YAML serializable (like a number, list, dict, or string)!"))
                 except Exception as e:
                     print(danger(str(e)))
+                    continue
 
-        # write the variable to the file (we do this *every* time we set
-        # something, but that's OK since it only happens during the first
-        # startup)
-        with open(variables_path, "w") as f:
-            yaml.safe_dump(variables, f, default_flow_style=False)
+                # we need to ensure the repr of the value is valid Python
+                try:
+                    eval(repr(val))
+                except Exception as e:
+                    print(danger("The value must have a repr that is valid Python (like a number, list, dict, or string)!"))
+                    continue
+
+                # everything is good, so we can actually save the value
+                variables[name] = val
+
+        # append the variable to the variables.py file
+        with open(VARIABLES_PATH, "a+") as f:
+            # write a newline if we're not at the beginning of the file, and
+            # the previous line didn't end with \n
+            write_new_line = f.tell() != 0 and not f.read().endswith("\n")
+            if write_new_line:
+                f.write("\n")
+            f.write("%s" % comment + "\n" if comment else "")
+            f.write("%s = %s\n" % (name, repr(val)))
 
     return variables[name]
 

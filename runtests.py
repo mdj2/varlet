@@ -2,9 +2,7 @@
 from mock import Mock, patch
 import unittest
 import os
-import __builtin__
 import readline
-import yaml
 import varlet
 from varlet import variable, get_preceeding_comments
 
@@ -14,55 +12,56 @@ class TestCase(unittest.TestCase):
 
     def tearDown(self):
         try:
-            os.remove("variables.yaml")
+            os.remove("variables.py")
         except OSError as e:
             pass
 
         varlet.variables = {}
 
-    @patch('__builtin__.print')
-    def test_non_yaml_value(self, print_mock):
+    @patch('varlet.print')
+    def test_non_repr_value(self, print_mock):
         def func(_, return_values=["object()", "'foo'"]):
             return return_values.pop(0)
 
-        # the first time raw_input return object() which is not YAML
+        # the first time input return object() which is not repr
         # serializable, and the second time it returns 'foo', which is fine
-        with patch('__builtin__.raw_input', func):
+        with patch('varlet.input', func):
             foo = variable("LAME")
-            self.assertTrue("The value must be YAML serializable" in "".join(map(repr, print_mock.call_args_list)))
+            self.assertTrue("The value must have a repr" in "".join(map(repr, print_mock.call_args_list)))
             self.assertEqual(foo, "foo")
 
-    @patch('__builtin__.print')
+    @patch('varlet.print')
     def test_non_valid_python_value(self, print_mock):
         def func(_, return_values=["asdf", "'foo'"]):
             return return_values.pop(0)
 
-        # the first time raw_input return asdf  which is not Python
+        # the first time input return asdf  which is not Python
         # and the second time it returns 'foo'
-        with patch('__builtin__.raw_input', func):
+        with patch('varlet.input', func):
             foo = variable("LAME")
             self.assertTrue("name 'asdf' is not defined" in "".join(map(repr, print_mock.call_args_list)))
             self.assertEqual(foo, "foo")
 
-    def test_get_variable_that_is_not_in_yaml_file(self):
-        with patch('__builtin__.raw_input', lambda _: "'hello world'"):
+    def test_get_variable_that_is_not_in_python_file(self):
+        with patch('varlet.input', lambda _: "'hello world'"):
             foo = variable("FOO")
-            # we patched raw_input to return hello world, so that is what we should
+            # we patched input to return hello world, so that is what we should
             # get back
             self.assertEqual(foo, "hello world")
-            # it should be written to the YAML file
-            self.assertEqual(open("variables.yaml").read(), "FOO: hello world\n")
+            # it should be written to the Python file
+            with open("variables.py") as f:
+                self.assertEqual(f.read(), "FOO = 'hello world'\n")
 
-        # a second call should get the value right back without prompting for raw_input
-        with patch('__builtin__.raw_input') as m:
+        # a second call should get the value right back without prompting for input
+        with patch('varlet.input') as m:
             foo = variable("FOO")
             self.assertFalse(m.called)
             self.assertEqual(foo, "hello world")
 
     @patch('readline.set_startup_hook')
     @patch('readline.insert_text', lambda x: x)
-    @patch('__builtin__.raw_input', lambda _: "'foo'")
-    def test_get_variable_that_is_not_in_yaml_file_with_default(self, set_startup_hook):
+    @patch('varlet.input', lambda _: "'foo'")
+    def test_get_variable_that_is_not_in_python_file_with_default(self, set_startup_hook):
         default = {"a": 123, (1,2): [1, "b"]}
         foo = variable("FOO", default=default)
         # set_startup_hook should be called so the prompt has an initial value
