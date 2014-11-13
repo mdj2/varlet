@@ -1,6 +1,6 @@
 # Varlet
 
-Varlet lets you prompt for variables at runtime, and saves them to a variables.yaml file.
+Varlet lets you prompt for variables at runtime, and saves them to a variables module.
 
 ## Install
 
@@ -22,9 +22,8 @@ use:
 DEBUG = variable("DEBUG", default=False)
 ```
 
-If this "DEBUG" variable is not defined in variables.yaml, the user is prompted
-to enter a Python expression to set it. Otherwise, it is read from
-variables.yaml.
+If this "DEBUG" variable is not defined in the variables module (somewhere in
+your python path), the user is prompted to enter a Python expression to set it.
 
 When the prompt is displayed, the comments directly above the call to
 `variable()` are displayed, and the prompt has a default value as specified by
@@ -33,10 +32,15 @@ the `default` argument.
 
 ## Implementation Details
 
-The first module to make a call to `variable()` determines the location of the
-variables.yaml file. Varlet will look in the directory that the calling module is
-located in. If variables.yaml does not exist in that directory, it is created
-there.
+varlet assumes there is a `variables` module located somewhere in your Python
+path. If it is not found, it will attempt to create one based on the location
+of `__main__`.
 
-If STDIN is not a tty-like interface, then a KeyError is raise if the varable
-is not set in variables.yaml.
+When a variable is set to a value, varlet will eval the value (to make sure it
+is valid python), and then perform `eval(repr(value))` to ensure that the value
+has a valid representation that can be written to a file. The `repr(value)` is
+then appended to the end of the `variables` module (along with any comments
+associated with the value).
+
+If STDIN is not a tty-like interface, then a KeyError is raise if the variable
+is not set in the variables module.
