@@ -37,7 +37,7 @@ path. If it is not found, it will attempt to create one based on the location
 of `__main__`.
 
 When a variable is set to a value, varlet will eval the value (to make sure it
-is valid python), and then perform `eval(repr(value))` to ensure that the value
+is valid python), and then perform `ast.literal_eval(repr(value))` to ensure that the value
 has a valid representation that can be written to a file. The `repr(value)` is
 then appended to the end of the `variables` module (along with any comments
 associated with the value).
