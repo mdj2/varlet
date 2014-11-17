@@ -6,17 +6,20 @@ import readline
 import varlet
 from varlet import variable, get_preceeding_comments
 
+def try_remove(path):
+    try:
+        os.remove(path)
+    except OSError as e:
+        return False
+    return True
+
 class TestCase(unittest.TestCase):
     def setUp(self):
         self.tearDown()
 
     def tearDown(self):
-        try:
-            os.remove("variables.py")
-        except OSError as e:
-            pass
-
-        varlet.variables = {}
+        try_remove("variables.py")
+        try_remove("variables.pyc")
 
     @patch('varlet.print')
     def test_non_repr_value(self, print_mock):
